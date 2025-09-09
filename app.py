@@ -5,10 +5,7 @@ import base64
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app)
-@app.route("/")
-def home():
-    return "Backend is running! Use /upload_model and /detect endpoints."
+CORS(app)  # allow frontend to access backend
 
 net = None
 CLASSES = ["background","aeroplane","bicycle","bird","boat",
@@ -16,15 +13,24 @@ CLASSES = ["background","aeroplane","bicycle","bird","boat",
            "dog","horse","motorbike","person","pottedplant",
            "sheep","sofa","train","tvmonitor"]
 
+@app.route("/")
+def home():
+    return "Backend is running! Use /upload_model and /detect endpoints."
+
 @app.route("/upload_model", methods=["POST"])
 def upload_model():
     global net
-    caffemodel = request.files["caffemodel"]
-    prototxt = request.files["prototxt"]
-    caffemodel.save("model.caffemodel")
-    prototxt.save("deploy.prototxt")
-    net = cv2.dnn.readNetFromCaffe("deploy.prototxt", "model.caffemodel")
-    return jsonify({"status": "Model loaded successfully"})
+    if "caffemodel" not in request.files or "prototxt" not in request.files:
+        return jsonify({"error":"Please upload both .caffemodel and .prototxt"}), 400
+    try:
+        caffemodel = request.files["caffemodel"]
+        prototxt = request.files["prototxt"]
+        caffemodel.save("model.caffemodel")
+        prototxt.save("deploy.prototxt")
+        net = cv2.dnn.readNetFromCaffe("deploy.prototxt", "model.caffemodel")
+        return jsonify({"status": "Model loaded successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/detect", methods=["POST"])
 def detect():
@@ -33,29 +39,34 @@ def detect():
         return jsonify({"error": "Model not loaded"}), 400
 
     data = request.json
-    image_data = base64.b64decode(data["image"])
-    np_arr = np.frombuffer(image_data, np.uint8)
-    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    if "image" not in data:
+        return jsonify({"error": "Image missing"}), 400
 
-    (h, w) = frame.shape[:2]
-    blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 0.007843, (300, 300), 127.5)
-    net.setInput(blob)
-    detections = net.forward()
+    try:
+        image_data = base64.b64decode(data["image"])
+        np_arr = np.frombuffer(image_data, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-    results = []
-    for i in range(detections.shape[2]):
-        confidence = detections[0, 0, i, 2]
-        if confidence > 0.5:
-            idx = int(detections[0, 0, i, 1])
-            box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-            (startX, startY, endX, endY) = box.astype("int")
-            results.append({
-                "label": CLASSES[idx],
-                "confidence": float(confidence),
-                "box": [int(startX), int(startY), int(endX), int(endY)]
-            })
+        (h, w) = frame.shape[:2]
+        blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)), 0.007843, (300, 300), 127.5)
+        net.setInput(blob)
+        detections = net.forward()
 
-    return jsonify({"detections": results})
+        results = []
+        for i in range(detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+            if confidence > 0.5:
+                idx = int(detections[0, 0, i, 1])
+                box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                (startX, startY, endX, endY) = box.astype("int")
+                results.append({
+                    "label": CLASSES[idx],
+                    "confidence": float(confidence),
+                    "box": [int(startX), int(startY), int(endX), int(endY)]
+                })
+        return jsonify({"detections": results})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
