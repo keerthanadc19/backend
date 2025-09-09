@@ -2,8 +2,10 @@ from flask import Flask, request, jsonify
 import cv2
 import numpy as np
 import base64
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 @app.route("/")
 def home():
     return "Backend is running! Use /upload_model and /detect endpoints."
