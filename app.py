@@ -4,6 +4,10 @@ import numpy as np
 import base64
 
 app = Flask(__name__)
+@app.route("/")
+def home():
+    return "Backend is running! Use /upload_model and /detect endpoints."
+
 net = None
 CLASSES = ["background","aeroplane","bicycle","bird","boat",
            "bottle","bus","car","cat","chair","cow","diningtable",
